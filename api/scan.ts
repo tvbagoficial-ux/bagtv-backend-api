@@ -1,41 +1,36 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configurar cabeçalhos CORS para aceitar pedidos do Framer
+  // Permite acesso de qualquer origem (Framer preview e produção)
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
 
+  // Responde imediatamente a requisições OPTIONS do navegador
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
-  }
-
   try {
-    // Tratamento seguro do body para evitar falhas de leitura na Vercel
     let body = req.body;
     if (typeof body === 'string') {
-      try {
-        body = JSON.parse(body);
-      } catch (e) {
-        body = {};
-      }
+      try { body = JSON.parse(body); } catch (e) { body = {}; }
     }
 
     const instagram = body?.instagram || "@lafrittella.panquecaria";
     const siteUrl = body?.siteUrl || "https://lafrittella.com.br";
     const cardapioUrl = body?.cardapioUrl || "";
 
-    // Objeto estruturado com os dados que vão povoar o painel
     const brandKitExtraido = {
       nomeEstabelecimento: "La Frittella Panquecaria",
       instagram: instagram,
       siteUrl: siteUrl,
       cardapioUrl: cardapioUrl,
-      tomDeVoz: "Familiar, acolhedor, focado em fartura ('a maior do ABC') e urgência de fome (Validado via IA).",
+      tomDeVoz: "Familiar, acolhedor, focado em fartura ('a maior do ABC') e urgência de fome.",
       coresPrimarias: ["#b91c1c", "#15803d", "#ffffff"],
       logoUrl: "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=200&q=80",
       produtos: [
@@ -55,6 +50,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
   } catch (error: any) {
-    return res.status(500).json({ sucesso: false, erro: error.message || 'Erro interno no servidor' });
+    return res.status(500).json({ sucesso: false, erro: error.message || 'Erro interno' });
   }
 }
