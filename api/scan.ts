@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const siteUrl = body?.siteUrl || "https://lafrittella.com.br";
     const cardapioUrl = body?.cardapioUrl || "";
 
-    // 1. Crawler de Imagens do Site Oficial
+    // 1. Raspagem HTML básica de imagens do site
     let extraidedImages: string[] = [];
     let pageTitle = "";
     let pageDescription = "";
@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("Aviso: Não foi possível raspar o site diretamente", e);
     }
 
-    // 2. Leitura e Estruturação com Gemini 1.5 Flash
+    // 2. Análise com Gemini 1.5 Flash usando a chave guardada nas variáveis da Vercel
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (apiKey) {
@@ -97,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    return res.status(500).json({ sucesso: false, erro: 'Chave GEMINI_API_KEY não encontrada' });
+    return res.status(500).json({ sucesso: false, erro: 'Chave GEMINI_API_KEY não encontrada nas variáveis da Vercel' });
 
   } catch (error: any) {
     return res.status(500).json({ sucesso: false, erro: error.message || 'Erro de processamento' });
