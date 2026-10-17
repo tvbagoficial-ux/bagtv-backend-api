@@ -34,28 +34,71 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // 1. Raspagem simples para buscar imagens reais do site
+    let imagensEncontradas: string[] = [];
+    let textoPagina = "";
+
+    try {
+      const respSite = await fetch(siteUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+      });
+      const htmlText = await respSite.text();
+
+      // Extrair tags <img> do HTML do site
+      const imgMatches = htmlText.match(/<img[^>]+src=["']([^"']+)["']/gi) || [];
+      const urlsExtraidas = imgMatches.map(tag => {
+        const match = tag.match(/src=["']([^"']+)["']/i);
+        return match ? match[1] : null;
+      }).filter((url): url is string => !!url);
+
+      // Normalizar URLs relativas
+      const urlsCompletas = urlsExtraidas.map(u => {
+        if (u.startsWith('//')) return `https:${u}`;
+        if (u.startsWith('/')) return `${new URL(siteUrl).origin}${u}`;
+        return u;
+      }).filter(u => u.startsWith('http') && !u.includes('svg') && !u.includes('icon'));
+
+      imagensEncontradas = Array.from(new Set(urlsCompletas)).slice(0, 15);
+      
+      // Limpar texto básico do HTML
+      textoPagina = htmlText.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '')
+                             .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '')
+                             .replace(/<[^>]+>/g, ' ')
+                             .replace(/\s+/g, ' ')
+                             .substring(0, 3000);
+    } catch (errScrape) {
+      console.log("Aviso de raspagem:", errScrape);
+    }
+
+    // 2. Passar os dados extraídos para o Gemini estruturar
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Modelo exato solicitado pelo serviço da Google na sua conta
     const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
 
     const prompt = `
-    Você é o assistente de IA do BagTV. Monte o Brand Kit em formato JSON para o estabelecimento:
-    Site: ${siteUrl}
-    Instagram: ${instagram}
-    Cardápio: ${cardapioUrl}
+    Você é o robô de extração de marca do BagTV. Analise o conteúdo extraído do site de um estabelecimento e estruture o Brand Kit.
 
-    Retorne EXCLUSIVAMENTE um objeto JSON válido (sem textos explicativos ou blocos markdown), exatamente com esta estrutura:
+    Site Oficial: ${siteUrl}
+    Instagram: ${instagram}
+    Cardápio URL: ${cardapioUrl}
+    Imagens Reais Encontradas no Site: ${JSON.stringify(imagensEncontradas)}
+    Trecho de Texto Encontrado no Site: "${textoPagina}"
+
+    INSTRUÇÕES CRÍTICAS:
+    - Identifique qual das URLs de imagem parece ser o logotipo oficial ou a fachada.
+    - Se houver imagens de pratos na lista de imagens encontradas, atribua-as aos produtos.
+    - Se a lista de imagens encontradas contiver URLs válidas, USE PREFERENCIALMENTE ESSAS URLs no campo logoUrl e urlFoto.
+    - Se não houver imagens suficientes, use imagens genéricas de alta qualidade adequadas ao tipo de comida (panquecas/massas).
+
+    Retorne EXCLUSIVAMENTE um objeto JSON válido (sem markdown), com esta estrutura exata:
     {
-      "nomeEstabelecimento": "La Frittella Panquecaria",
-      "tomDeVoz": "Familiar, acolhedor e focado em fartura ('A Maior Panqueca do ABC').",
-      "coresPrimarias": ["#b91c1c", "#15803d", "#ffffff"],
-      "logoUrl": "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=200&q=80",
+      "nomeEstabelecimento": "Nome real do local",
+      "tomDeVoz": "Resumo do tom de voz extraído do texto",
+      "coresPrimarias": ["#hex1", "#hex2", "#hex3"],
+      "logoUrl": "URL do logo ou da imagem principal extraída",
       "produtos": [
-        {"id": "p1", "nomePrato": "Combo III (Família)", "preco": "R$ 185,90", "categoria": "Combos", "urlFoto": "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=600&q=80"},
-        {"id": "p2", "nomePrato": "Panqueca La Monstra", "preco": "R$ 69,90", "categoria": "Autorais", "urlFoto": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=600&q=80"},
-        {"id": "p3", "nomePrato": "Panqueca Doce de Morango", "preco": "R$ 39,90", "categoria": "Sobremesas", "urlFoto": "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80"}
+        {"id": "p1", "nomePrato": "Nome do Prato", "preco": "R$ XX,XX", "categoria": "Categoria", "urlFoto": "URL da foto extraída"}
       ],
-      "videos": ["Reel_Bastidores_Extraido_Instagram.mp4", "Reel_Montagem_Panqueca_Real.mp4"]
+      "videos": ["Reel_01.mp4", "Reel_02.mp4"]
     }
     `;
 
@@ -77,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     return res.status(200).json({
       sucesso: false,
-      erro: `Erro na execução do Gemini: ${error.message || 'Erro desconhecido'}`
+      erro: `Erro no processamento: ${error.message || 'Erro desconhecido'}`
     });
   }
 }
