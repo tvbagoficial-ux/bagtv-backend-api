@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configurar cabeçalhos CORS para permitir acesso direto do seu site no Framer
+  // Configurar cabeçalhos CORS para aceitar pedidos do Framer
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -15,16 +15,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { instagram, siteUrl, cardapioUrl } = req.body;
+    // Tratamento seguro do body para evitar falhas de leitura na Vercel
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        body = {};
+      }
+    }
 
-    // Aqui o motor processa as URLs enviadas pela interface do Framer
-    // Em breve, integraremos o crawler e a API do Gemini para varredura profunda automatizada.
+    const instagram = body?.instagram || "@lafrittella.panquecaria";
+    const siteUrl = body?.siteUrl || "https://lafrittella.com.br";
+    const cardapioUrl = body?.cardapioUrl || "";
 
+    // Objeto estruturado com os dados que vão povoar o painel
     const brandKitExtraido = {
       nomeEstabelecimento: "La Frittella Panquecaria",
-      instagram: instagram || "@lafrittella.panquecaria",
-      siteUrl: siteUrl || "https://lafrittella.com.br",
-      cardapioUrl: cardapioUrl || "https://cardapio.framer.ai",
+      instagram: instagram,
+      siteUrl: siteUrl,
+      cardapioUrl: cardapioUrl,
       tomDeVoz: "Familiar, acolhedor, focado em fartura ('a maior do ABC') e urgência de fome (Validado via IA).",
       coresPrimarias: ["#b91c1c", "#15803d", "#ffffff"],
       logoUrl: "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=200&q=80",
@@ -44,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       brandKit: brandKitExtraido
     });
 
-  } catch (error) {
-    return res.status(500).json({ sucesso: false, erro: 'Erro interno ao processar varredura.' });
+  } catch (error: any) {
+    return res.status(500).json({ sucesso: false, erro: error.message || 'Erro interno no servidor' });
   }
 }
