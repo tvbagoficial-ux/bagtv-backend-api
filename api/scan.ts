@@ -35,14 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Tenta usar o modelo atual da SDK e faz fallback automático se necessário
-    let model;
-    try {
-      model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    } catch (e) {
-      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-    }
+    // Modelo exato solicitado pelo serviço da Google na sua conta
+    const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
 
     const prompt = `
     Você é o assistente de IA do BagTV. Monte o Brand Kit em formato JSON para o estabelecimento:
