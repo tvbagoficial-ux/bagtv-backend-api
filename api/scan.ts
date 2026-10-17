@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS Headers
+  // Configuração de cabeçalhos CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -35,7 +35,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    // Tenta usar o modelo atual da SDK e faz fallback automático se necessário
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    } catch (e) {
+      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    }
 
     const prompt = `
     Você é o assistente de IA do BagTV. Monte o Brand Kit em formato JSON para o estabelecimento:
