@@ -67,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ 
-          model: "gemini-1.5-flash",
+          model: "gemini-2.5-flash",
           generationConfig: { responseMimeType: "application/json" }
         });
 
@@ -120,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // MODO 1: ESCANEAMENTO DE PERFIL (ABA 1 - Seu código original mantido)
+    // MODO 1: ESCANEAMENTO DE PERFIL (ABA 1)
     const instagramRaw = body?.instagram || "";
     const instagramHandle = instagramRaw.replace("@", "").trim();
 
@@ -155,7 +155,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (apiKey && postsCarregados.length > 0) {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         generationConfig: { responseMimeType: "application/json" }
       });
 
