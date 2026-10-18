@@ -31,7 +31,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const actorId = "apify~instagram-scraper";
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
-    // Estrutura de Cookies para Autenticação de Sessão no Apify
     const sessionCookies = [
       {
         name: "sessionid",
@@ -43,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ];
 
-    // MODO 2: BENCHMARK VIRAL COM AUTENTICAÇÃO E EXTRAÇÃO COMPLETA DE PERFIL (ABA 2)
+    // MODO 2: BENCHMARK MACRO VIRAL (REFERÊNCIAS CONSOLIDADAS DO NICHO)
     if (body?.action === 'benchmark' && body?.niche) {
       const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
 
@@ -58,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           directUrls: [hashtagUrl],
-          resultsLimit: 15,
+          resultsLimit: 25, // Aumentado para pegar uma amostra maior e filtrar os maiores campeões
           resultsType: "posts",
           sessionCookie: sessionId,
           cookies: sessionCookies
@@ -67,11 +66,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const itemsApify = responseApify.ok ? await responseApify.json() : [];
 
+      // Processa os posts calculando o Score de Engajamento Bruto (Curtidas + Comentários * 2.5)
       const postsBrutos = Array.isArray(itemsApify) ? itemsApify
         .map((item: any, index: number) => {
           const shortCode = item.shortCode || item.code;
           const urlPost = item.url || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
+          const likes = item.likesCount || 0;
+          const comments = item.commentsCount || 0;
           
+          // Cálculo do Score Bruto Absolute
+          const scoreEngajamentoBruto = likes + (comments * 2.5);
+
           return {
             id: item.id || `bench-${index}`,
             autor: item.ownerUsername || "Criador do Instagram",
@@ -79,23 +84,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             totalPostsPerfil: item.ownerPostsCount || item.postsCount || item.owner?.postsCount || null,
             legenda: item.caption || "Sem legenda",
             urlPost: urlPost,
-            likesCount: item.likesCount || 0,
-            commentsCount: item.commentsCount || 0,
+            likesCount: likes,
+            commentsCount: comments,
+            scoreBruto: scoreEngajamentoBruto,
             tipo: item.type === "Video" ? "Reels / Vídeo" : "Foto Feed",
             timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
           };
         })
         .filter(p => !!p.urlPost)
-        .sort((a, b) => b.likesCount - a.likesCount)
+        // ORDENAÇÃO MACRO: Maior volume bruto de engajamento do nicho
+        .sort((a, b) => b.scoreBruto - a.scoreBruto)
         : [];
 
       if (postsBrutos.length === 0) {
         return res.status(200).json({ 
           sucesso: false, 
-          erro: `Nenhum post público encontrado para a hashtag #${termoLimpo}. Tente outro termo.` 
+          erro: `Nenhum post de grande impacto encontrado para #${termoLimpo}. Tente outro nicho.` 
         });
       }
 
+      // Análise de Engenharia Reversa Focada em Padrões Macro de Sucesso
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -105,14 +113,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
         const prompt = `
-        Você é um estrategista sênior de marketing digital e engenharia reversa de conteúdo viral.
-        Analise a lista de posts reais do Instagram coletados para a busca por hashtag "${termoLimpo}".
-        Selecione até 10 conteúdos de maior engajamento e desconstrua os porquês do sucesso.
+        Você é o cientista chefe de algoritmos e engenharia reversa do BagTV SaaS.
+        Analise os posts de MAIOR ENGAJAMENTO ABSOLUTO do mercado/nicho: "${termoLimpo}".
+        Estes posts foram selecionados por volume maciço de interações (curtidas e comentários).
 
-        Posts coletados reais:
-        ${JSON.stringify(postsBrutos.slice(0, 15))}
+        Posts campeões absolutos coletados:
+        ${JSON.stringify(postsBrutos.slice(0, 10))}
 
-        Para cada post selecionado, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
+        Desconstrua o padrão de sucesso desses conteúdos macro para servirem de modelo na criação de posts futuros.
+        Para cada post, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
         [
           {
             "autor": "username real do criador",
@@ -122,11 +131,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             "likesCount": 0,
             "commentsCount": 0,
             "tipo": "Reels / Vídeo ou Foto Feed",
-            "scoreViral": "Ex: 5.2x Acima da Média",
-            "pilarVisual": "Análise do gancho visual nos primeiros quadros",
-            "pilarHeadline": "Análise do texto na tela ou quebra de objeção",
-            "pilarAudioFormato": "Análise do áudio e ritmo de edição",
-            "pilarCtaRetencao": "Análise da retenção por loop ou chamada para ação"
+            "scoreViral": "Ex: Campeão do Nicho (Volume Absoluto)",
+            "pilarVisual": "O que na imagem/vídeo atrai o olhar imediatamente no padrão macro do nicho",
+            "pilarHeadline": "Qual a promessa ou quebra de objeção usada no título/texto",
+            "pilarAudioFormato": "Estrutura do formato ou estilo sonoro dominante",
+            "pilarCtaRetencao": "Por que as pessoas comentaram e compartilharam em massa"
           }
         ]
         `;
@@ -143,7 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // MODO 1: ESCANEAMENTO DE PERFIL INDIVIDUAL (ABA 1)
+    // MODO 1: DIAGNÓSTICO DO PERFIL DO CLIENTE (ABA 1)
     const instagramRaw = body?.instagram || "";
     const instagramHandle = instagramRaw.replace("@", "").trim();
 
