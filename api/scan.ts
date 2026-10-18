@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ];
 
-    // MODO 2: BENCHMARK MACRO VIRAL (DEEP SCRAPE & RÉGUA DE ELITE DOS GIGANTES)
+    // MODO 2: BENCHMARK MACRO VIRAL VIA REELS E BUSCA DE ALTO ALCANCE (ABA 2)
     if (body?.action === 'benchmark' && body?.niche) {
       const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
 
@@ -50,17 +50,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ sucesso: false, erro: "Informe um nicho ou palavra-chave válida." });
       }
 
-      // Varredura na tag principal e variações diretas do nicho
-      const hashtagUrl = `https://www.instagram.com/explore/tags/${termoLimpo}/`;
-
-      // Amostra expandida de até 60 posts para garantir o filtro dos campeões de audiência
+      // Payload configurado para puxar REELS virais em lote por busca interna no Apify
       const responseApify = await fetch(apifyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          directUrls: [hashtagUrl],
-          resultsLimit: 60,
-          resultsType: "posts",
+          search: termoLimpo,
+          searchType: "hashtag",
+          resultsType: "reels",
+          resultsLimit: 50,
           sessionCookie: sessionId,
           cookies: sessionCookies
         })
@@ -68,17 +66,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const itemsApify = responseApify.ok ? await responseApify.json() : [];
 
-      // Mapeamento e cálculo do Score de Engajamento Macro
+      // Mapeamento e cálculo do Score de Engajamento Bruto dos Reels
       const postsProcessados = Array.isArray(itemsApify) ? itemsApify
         .map((item: any, index: number) => {
           const shortCode = item.shortCode || item.code;
-          const urlPost = item.url || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
+          const urlPost = item.url || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
           const likes = item.likesCount || 0;
           const comments = item.commentsCount || 0;
-          const followers = item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || 0;
-          const totalPosts = item.ownerPostsCount || item.postsCount || item.owner?.postsCount || 0;
+          const followers = item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || null;
+          const totalPosts = item.ownerPostsCount || item.postsCount || item.owner?.postsCount || null;
           
-          // Pontuação de Engajamento Ponderada (Comentários valem 3x mais que curtidas)
+          // Pontuação Bruta de Impacto Macro
           const scoreEngajamentoBruto = likes + (comments * 3);
 
           return {
@@ -91,26 +89,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             likesCount: likes,
             commentsCount: comments,
             scoreBruto: scoreEngajamentoBruto,
-            tipo: item.type === "Video" ? "Reels / Vídeo" : "Foto Feed",
+            tipo: "Reels / Vídeo",
             timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
           };
         })
         .filter(p => !!p.urlPost && p.autor !== "Criador do Instagram")
-        // Ordena estritamente pelos maiores volumes do mercado
         .sort((a, b) => b.scoreBruto - a.scoreBruto)
         : [];
 
       if (postsProcessados.length === 0) {
         return res.status(200).json({ 
           sucesso: false, 
-          erro: `Nenhum conteúdo de grande relevância encontrado para #${termoLimpo}. Tente outro nicho.` 
+          erro: `Nenhum Reels de alta relevância encontrado para o nicho "${termoLimpo}". Tente outro termo.` 
         });
       }
 
-      // Seleção dos campeões absolutos da amostra
       const topPostsMacro = postsProcessados.slice(0, 10);
 
-      // Engenharia Reversa pelo Gemini 3.8 Flash focada em Padrões Industriais/Macro
+      // Desconstrução da Engenharia Reversa pelo Gemini
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -121,14 +117,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const prompt = `
         Você é o Diretor de Criação e Inteligência de Mercado do BagTV SaaS.
-        Sua missão é desconstruir os conteúdos de MAIOR IMPACTO E ENGAJAMENTO ABSOLUTO do nicho "${termoLimpo}".
-        Estes posts foram selecionados por representarem a elite de tração do mercado (padrão de engajamento de grandes franquias e marcas líderes).
+        Analise a lista de REELS de MAIOR impacto e tração de engajamento do nicho "${termoLimpo}".
+        Estes vídeos representam a elite de retenção e alcance do mercado.
 
         Amostra dos Campeões de Mercado:
         ${JSON.stringify(topPostsMacro)}
 
-        Analise a engenharia reversa desses conteúdos para que sirvam de modelo científico na criação de mídias de alta conversão.
-        Para cada um dos 10 posts, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
+        Desconstrua a engenharia reversa desses vídeos virais para servir de referência na criação de mídias de alta conversão.
+        Para cada um dos 10 vídeos, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
         [
           {
             "autor": "username do criador/marca",
@@ -137,12 +133,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             "urlPost": "link oficial da publicação",
             "likesCount": 0,
             "commentsCount": 0,
-            "tipo": "Reels / Vídeo ou Foto Feed",
+            "tipo": "Reels / Vídeo",
             "scoreViral": "👑 Referência Macro de Mercado",
-            "pilarVisual": "Engenharia do gancho visual (iluminação, enquadramento food porn, contraste e dinamismo nos primeiros quadros)",
-            "pilarHeadline": "Análise da tese de venda, promessa central ou gatilho de desejo textual",
-            "pilarAudioFormato": "Estrutura do formato (ASMR, ritmo de edição rápida, narrativa ou trilha comercial)",
-            "pilarCtaRetencao": "Gatilho psicológico que gerou salvamentos, comentários e direcionamento de pedidos"
+            "pilarVisual": "Engenharia do gancho visual nos primeiros 3 segundos (enquadramento food porn, contraste, transição ou movimento)",
+            "pilarHeadline": "Quebra de objeção, promessa do texto ou gancho na tela",
+            "pilarAudioFormato": "Estrutura do formato (ASMR, ritmo de edição rápida, locução ou trilha comercial)",
+            "pilarCtaRetencao": "Por que o vídeo gerou salvamentos, comentários e direcionamento de vendas"
           }
         ]
         `;
@@ -159,7 +155,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // MODO 1: DIAGNÓSTICO DO PERFIL DO CLIENTE (ABA 1)
+    // MODO 1: DIAGNÓSTICO DO PERFIL DO CLIENTE (ABA 1 - PERMANECE 100% INTACTO)
     const instagramRaw = body?.instagram || "";
     const instagramHandle = instagramRaw.replace("@", "").trim();
 
