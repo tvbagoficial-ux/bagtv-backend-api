@@ -22,6 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const apifyToken = process.env.APIFY_API_TOKEN;
     const apiKey = process.env.GEMINI_API_KEY;
+    const sessionId = process.env.INSTAGRAM_SESSION_ID || "6db68c34d0b72d85";
 
     if (!apifyToken) {
       return res.status(200).json({ sucesso: false, erro: "Chave APIFY_API_TOKEN não configurada na Vercel." });
@@ -30,7 +31,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const actorId = "apify~instagram-scraper";
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
-    // MODO 2: BENCHMARK VIRAL COM SEGUIDORES E POSTS DO PERFIL (ABA 2)
+    // Estrutura de Cookies para Autenticação de Sessão no Apify
+    const sessionCookies = [
+      {
+        name: "sessionid",
+        value: sessionId,
+        domain: ".instagram.com",
+        path: "/",
+        httpOnly: true,
+        secure: true
+      }
+    ];
+
+    // MODO 2: BENCHMARK VIRAL COM AUTENTICAÇÃO E EXTRAÇÃO COMPLETA DE PERFIL (ABA 2)
     if (body?.action === 'benchmark' && body?.niche) {
       const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
 
@@ -46,7 +59,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify({
           directUrls: [hashtagUrl],
           resultsLimit: 15,
-          resultsType: "posts"
+          resultsType: "posts",
+          sessionCookie: sessionId,
+          cookies: sessionCookies
         })
       });
 
@@ -60,8 +75,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return {
             id: item.id || `bench-${index}`,
             autor: item.ownerUsername || "Criador do Instagram",
-            seguidores: item.ownerFollowersCount || item.followersCount || 0,
-            totalPostsPerfil: item.ownerPostsCount || item.postsCount || 0,
+            seguidores: item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || null,
+            totalPostsPerfil: item.ownerPostsCount || item.postsCount || item.owner?.postsCount || null,
             legenda: item.caption || "Sem legenda",
             urlPost: urlPost,
             likesCount: item.likesCount || 0,
@@ -142,7 +157,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         directUrls: [`[https://www.instagram.com/$](https://www.instagram.com/$){instagramHandle}/`],
         resultsLimit: 12,
-        resultsType: "posts"
+        resultsType: "posts",
+        sessionCookie: sessionId,
+        cookies: sessionCookies
       })
     });
 
