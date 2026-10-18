@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ];
 
-    // MODO 2: BENCHMARK MACRO VIRAL (REFERÊNCIAS CONSOLIDADAS DO NICHO)
+    // MODO 2: BENCHMARK MACRO VIRAL (DEEP SCRAPE & RÉGUA DE ELITE DOS GIGANTES)
     if (body?.action === 'benchmark' && body?.niche) {
       const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
 
@@ -50,14 +50,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ sucesso: false, erro: "Informe um nicho ou palavra-chave válida." });
       }
 
+      // Varredura na tag principal e variações diretas do nicho
       const hashtagUrl = `https://www.instagram.com/explore/tags/${termoLimpo}/`;
 
+      // Amostra expandida de até 60 posts para garantir o filtro dos campeões de audiência
       const responseApify = await fetch(apifyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           directUrls: [hashtagUrl],
-          resultsLimit: 25, // Aumentado para pegar uma amostra maior e filtrar os maiores campeões
+          resultsLimit: 60,
           resultsType: "posts",
           sessionCookie: sessionId,
           cookies: sessionCookies
@@ -66,22 +68,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const itemsApify = responseApify.ok ? await responseApify.json() : [];
 
-      // Processa os posts calculando o Score de Engajamento Bruto (Curtidas + Comentários * 2.5)
-      const postsBrutos = Array.isArray(itemsApify) ? itemsApify
+      // Mapeamento e cálculo do Score de Engajamento Macro
+      const postsProcessados = Array.isArray(itemsApify) ? itemsApify
         .map((item: any, index: number) => {
           const shortCode = item.shortCode || item.code;
           const urlPost = item.url || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
           const likes = item.likesCount || 0;
           const comments = item.commentsCount || 0;
+          const followers = item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || 0;
+          const totalPosts = item.ownerPostsCount || item.postsCount || item.owner?.postsCount || 0;
           
-          // Cálculo do Score Bruto Absolute
-          const scoreEngajamentoBruto = likes + (comments * 2.5);
+          // Pontuação de Engajamento Ponderada (Comentários valem 3x mais que curtidas)
+          const scoreEngajamentoBruto = likes + (comments * 3);
 
           return {
             id: item.id || `bench-${index}`,
             autor: item.ownerUsername || "Criador do Instagram",
-            seguidores: item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || null,
-            totalPostsPerfil: item.ownerPostsCount || item.postsCount || item.owner?.postsCount || null,
+            seguidores: followers,
+            totalPostsPerfil: totalPosts,
             legenda: item.caption || "Sem legenda",
             urlPost: urlPost,
             likesCount: likes,
@@ -91,19 +95,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
           };
         })
-        .filter(p => !!p.urlPost)
-        // ORDENAÇÃO MACRO: Maior volume bruto de engajamento do nicho
+        .filter(p => !!p.urlPost && p.autor !== "Criador do Instagram")
+        // Ordena estritamente pelos maiores volumes do mercado
         .sort((a, b) => b.scoreBruto - a.scoreBruto)
         : [];
 
-      if (postsBrutos.length === 0) {
+      if (postsProcessados.length === 0) {
         return res.status(200).json({ 
           sucesso: false, 
-          erro: `Nenhum post de grande impacto encontrado para #${termoLimpo}. Tente outro nicho.` 
+          erro: `Nenhum conteúdo de grande relevância encontrado para #${termoLimpo}. Tente outro nicho.` 
         });
       }
 
-      // Análise de Engenharia Reversa Focada em Padrões Macro de Sucesso
+      // Seleção dos campeões absolutos da amostra
+      const topPostsMacro = postsProcessados.slice(0, 10);
+
+      // Engenharia Reversa pelo Gemini 3.8 Flash focada em Padrões Industriais/Macro
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -113,29 +120,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
         const prompt = `
-        Você é o cientista chefe de algoritmos e engenharia reversa do BagTV SaaS.
-        Analise os posts de MAIOR ENGAJAMENTO ABSOLUTO do mercado/nicho: "${termoLimpo}".
-        Estes posts foram selecionados por volume maciço de interações (curtidas e comentários).
+        Você é o Diretor de Criação e Inteligência de Mercado do BagTV SaaS.
+        Sua missão é desconstruir os conteúdos de MAIOR IMPACTO E ENGAJAMENTO ABSOLUTO do nicho "${termoLimpo}".
+        Estes posts foram selecionados por representarem a elite de tração do mercado (padrão de engajamento de grandes franquias e marcas líderes).
 
-        Posts campeões absolutos coletados:
-        ${JSON.stringify(postsBrutos.slice(0, 10))}
+        Amostra dos Campeões de Mercado:
+        ${JSON.stringify(topPostsMacro)}
 
-        Desconstrua o padrão de sucesso desses conteúdos macro para servirem de modelo na criação de posts futuros.
-        Para cada post, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
+        Analise a engenharia reversa desses conteúdos para que sirvam de modelo científico na criação de mídias de alta conversão.
+        Para cada um dos 10 posts, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
         [
           {
-            "autor": "username real do criador",
+            "autor": "username do criador/marca",
             "seguidores": 0,
             "totalPostsPerfil": 0,
-            "urlPost": "link oficial da publicação fornecida",
+            "urlPost": "link oficial da publicação",
             "likesCount": 0,
             "commentsCount": 0,
             "tipo": "Reels / Vídeo ou Foto Feed",
-            "scoreViral": "Ex: Campeão do Nicho (Volume Absoluto)",
-            "pilarVisual": "O que na imagem/vídeo atrai o olhar imediatamente no padrão macro do nicho",
-            "pilarHeadline": "Qual a promessa ou quebra de objeção usada no título/texto",
-            "pilarAudioFormato": "Estrutura do formato ou estilo sonoro dominante",
-            "pilarCtaRetencao": "Por que as pessoas comentaram e compartilharam em massa"
+            "scoreViral": "👑 Referência Macro de Mercado",
+            "pilarVisual": "Engenharia do gancho visual (iluminação, enquadramento food porn, contraste e dinamismo nos primeiros quadros)",
+            "pilarHeadline": "Análise da tese de venda, promessa central ou gatilho de desejo textual",
+            "pilarAudioFormato": "Estrutura do formato (ASMR, ritmo de edição rápida, narrativa ou trilha comercial)",
+            "pilarCtaRetencao": "Gatilho psicológico que gerou salvamentos, comentários e direcionamento de pedidos"
           }
         ]
         `;
@@ -148,7 +155,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         sucesso: true,
-        virais: postsViraisComAnalise.length > 0 ? postsViraisComAnalise : postsBrutos.slice(0, 10)
+        virais: postsViraisComAnalise.length > 0 ? postsViraisComAnalise : topPostsMacro
       });
     }
 
