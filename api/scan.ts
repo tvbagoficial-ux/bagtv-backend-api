@@ -30,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const actorId = "apify~instagram-scraper";
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
-    // MODO 2: PESQUISA DE BENCHMARK AUTÔNOMA VIA HASHTAG DINÂMICA (ABA 2 - OPÇÃO A)
+    // MODO 2: BENCHMARK VIRAL COM SEGUIDORES E POSTS DO PERFIL (ABA 2)
     if (body?.action === 'benchmark' && body?.niche) {
       const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
 
@@ -38,7 +38,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ sucesso: false, erro: "Informe um nicho ou palavra-chave válida." });
       }
 
-      // Monta dinamicamente a URL da hashtag para o Apify sem hardcode
       const hashtagUrl = `https://www.instagram.com/explore/tags/${termoLimpo}/`;
 
       const responseApify = await fetch(apifyUrl, {
@@ -61,6 +60,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return {
             id: item.id || `bench-${index}`,
             autor: item.ownerUsername || "Criador do Instagram",
+            seguidores: item.ownerFollowersCount || item.followersCount || 0,
+            totalPostsPerfil: item.ownerPostsCount || item.postsCount || 0,
             legenda: item.caption || "Sem legenda",
             urlPost: urlPost,
             likesCount: item.likesCount || 0,
@@ -76,11 +77,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (postsBrutos.length === 0) {
         return res.status(200).json({ 
           sucesso: false, 
-          erro: `Nenhum post público encontrado para a hashtag #${termoLimpo}. Tente outro termo (ex: pizza, hamburguer).` 
+          erro: `Nenhum post público encontrado para a hashtag #${termoLimpo}. Tente outro termo.` 
         });
       }
 
-      // Análise dos 4 pilares de Engenharia Reversa pelo Gemini
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -101,6 +101,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [
           {
             "autor": "username real do criador",
+            "seguidores": 0,
+            "totalPostsPerfil": 0,
             "urlPost": "link oficial da publicação fornecida",
             "likesCount": 0,
             "commentsCount": 0,
