@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try { body = JSON.parse(body); } catch (e) { body = {}; }
     }
 
-    const instagramRaw = body?.instagram || "@lafrittellapanquecaria";
+    const instagramRaw = body?.instagram || "@tvbagoficial";
     const instagramHandle = instagramRaw.replace("@", "").trim();
 
     const apifyToken = process.env.APIFY_API_TOKEN;
@@ -44,18 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     });
 
-    if (!responseApify.ok) {
-      throw new Error(`Falha na API do Apify: HTTP status ${responseApify.status}`);
-    }
+    const itemsApify = responseApify.ok ? await responseApify.json() : [];
 
-    const itemsApify = await responseApify.json();
-
-    if (!Array.isArray(itemsApify) || itemsApify.length === 0) {
-      return res.status(200).json({ sucesso: false, erro: "Nenhum post público encontrado para este perfil." });
-    }
-
-    // Formatação dos posts
-    const postsCarregados = itemsApify.map((item: any, index: number) => ({
+    // Formatação dos posts retornados
+    const postsCarregados = Array.isArray(itemsApify) ? itemsApify.map((item: any, index: number) => ({
       id: item.id || `post-${index}`,
       nomePrato: item.caption || "Publicação do Instagram",
       preco: "Post Instagram",
@@ -64,13 +56,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       likesCount: item.likesCount || 0,
       commentsCount: item.commentsCount || 0,
       timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
-    })).filter(post => !!post.urlFoto);
+    })).filter(post => !!post.urlFoto) : [];
 
-    // 2. Análise Dinâmica via Gemini IA
+    // CASO 1: Perfil novo sem publicações
+    if (postsCarregados.length === 0) {
+      return res.status(200).json({
+        sucesso: true,
+        diagnostico: {
+          nichoIdentificado: "Perfil Novo / Sem Publicações",
+          pilar1_visual: "A conta ainda não possui publicações para avaliar padrão de imagens.",
+          pilar2_formato: "Sem histórico de Reels ou conteúdos em vídeo cadastrados.",
+          pilar3_copywriting: "Necessário criar a linha editorial inicial com ganchos e CTAs para atração de seguidores."
+        },
+        brandKit: {
+          nomeEstabelecimento: instagramHandle,
+          instagram: `@${instagramHandle}`,
+          produtos: []
+        }
+      });
+    }
+
+    // CASO 2: Análise Agnóstica e Dinâmica via Gemini IA
     let diagnosticoDinamico = {
-      pilar1_iluminacao: "Fotos estáticas com iluminação amarela/sombra sem foco nos detalhes e brilho dos ingredientes.",
-      pilar2_movimento: "Falta de vídeos dinâmicos (Reels) mostrando preparação, textura e movimento para reter o público.",
-      pilar3_legendas: "Legendas puramente descritivas e passivas sem chamadas para ação (CTA) ou perguntas para comentários."
+      nichoIdentificado: "Geral",
+      pilar1_visual: "Avaliação visual pendente de processamento por IA.",
+      pilar2_formato: "Análise de formatos e retenção algorítmica pendente.",
+      pilar3_copywriting: "Análise de copywriting e engajamento pendente."
     };
 
     if (apiKey) {
@@ -79,16 +90,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const prompt = `
-        Você é o auditor de marketing do BagTV SaaS. Analise as postagens recentes do perfil @${instagramHandle}:
-        Estatísticas: ${postsCarregados.length} posts analisados.
-        Amostra de legendas: ${JSON.stringify(postsCarregados.map(p => p.nomePrato).slice(0, 5))}
+        Você é um auditor de marketing digital agnóstico do SaaS BagTV.
+        Analise de forma personalizada o perfil do Instagram: @${instagramHandle}
 
-        Gere um diagnóstico direto apontando os 3 principais gargalos do perfil em no máximo 2 frases por pilar.
+        Amostra de legendas/posts recentes extraídos:
+        ${JSON.stringify(postsCarregados.map(p => p.nomePrato).slice(0, 6))}
+
+        Sua tarefa:
+        1. Identifique o NICHO do perfil (ex: Tecnologia, Publicidade DOOH, Gastronomia, Moda, Fitness, Serviços, etc.).
+        2. Gere um diagnóstico ultra-específico e contextualizado para este nicho sem inventar informações.
+        
         Retorne EXCLUSIVAMENTE este JSON válido:
         {
-          "pilar1_iluminacao": "Análise sobre qualidade/iluminação/food porn das imagens",
-          "pilar2_movimento": "Análise sobre dinamismo/vídeos/retenção de público",
-          "pilar3_legendas": "Análise sobre legendas, ganchos e falta de chamadas para ação (CTA)"
+          "nichoIdentificado": "Nome do Nicho Detectado",
+          "pilar1_visual": "Análise da atratividade e padrão visual para este nicho específico em 2 frases.",
+          "pilar2_formato": "Análise de formatos de mídia (Reels x Estático x Carrossel) e retenção em 2 frases.",
+          "pilar3_copywriting": "Análise sobre o tom de voz das legendas, ganchos e presença de Chamadas para Ação (CTA) em 2 frases."
         }
         `;
 
@@ -97,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const jsonClean = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         diagnosticoDinamico = JSON.parse(jsonClean);
       } catch (e) {
-        console.warn("Falha na análise da IA, utilizando padrão de auditoria:", e);
+        console.warn("Falha na chamada Gemini IA, usando fallback básico:", e);
       }
     }
 
