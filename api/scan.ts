@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ];
 
-    // MODO 2: BENCHMARK MACRO VIRAL VIA REELS E BUSCA DE ALTO ALCANCE (ABA 2)
+    // MODO 2: BENCHMARK HÍBRIDO (POSTS, CARROSSÉIS E REELS DE ALTO IMPACTO)
     if (body?.action === 'benchmark' && body?.niche) {
       const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
 
@@ -50,15 +50,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ sucesso: false, erro: "Informe um nicho ou palavra-chave válida." });
       }
 
-      // Payload configurado para puxar REELS virais em lote por busca interna no Apify
+      const hashtagUrl = `https://www.instagram.com/explore/tags/${termoLimpo}/`;
+
+      // Coleta ampla híbrida (Posts e Reels em conjunto) para abranger o ecossistema completo
       const responseApify = await fetch(apifyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          search: termoLimpo,
-          searchType: "hashtag",
-          resultsType: "reels",
-          resultsLimit: 50,
+          directUrls: [hashtagUrl],
+          resultsLimit: 60,
+          resultsType: "posts",
           sessionCookie: sessionId,
           cookies: sessionCookies
         })
@@ -66,15 +67,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const itemsApify = responseApify.ok ? await responseApify.json() : [];
 
-      // Mapeamento e cálculo do Score de Engajamento Bruto dos Reels
       const postsProcessados = Array.isArray(itemsApify) ? itemsApify
         .map((item: any, index: number) => {
           const shortCode = item.shortCode || item.code;
-          const urlPost = item.url || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
+          const isVideo = item.type === "Video" || item.isReel;
+          const urlPost = item.url || (shortCode ? `https://www.instagram.com/${isVideo ? 'reel' : 'p'}/${shortCode}/` : null);
           const likes = item.likesCount || 0;
           const comments = item.commentsCount || 0;
-          const followers = item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || null;
-          const totalPosts = item.ownerPostsCount || item.postsCount || item.owner?.postsCount || null;
+          const followers = item.ownerFollowersCount || item.followersCount || item.owner?.followersCount || 0;
+          const totalPosts = item.ownerPostsCount || item.postsCount || item.owner?.postsCount || 0;
           
           // Pontuação Bruta de Impacto Macro
           const scoreEngajamentoBruto = likes + (comments * 3);
@@ -89,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             likesCount: likes,
             commentsCount: comments,
             scoreBruto: scoreEngajamentoBruto,
-            tipo: "Reels / Vídeo",
+            tipo: isVideo ? "Reels / Vídeo" : "Foto / Carrossel",
             timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
           };
         })
@@ -100,13 +101,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (postsProcessados.length === 0) {
         return res.status(200).json({ 
           sucesso: false, 
-          erro: `Nenhum Reels de alta relevância encontrado para o nicho "${termoLimpo}". Tente outro termo.` 
+          erro: `Nenhum conteúdo de alta relevância encontrado para #${termoLimpo}. Tente outro termo.` 
         });
       }
 
       const topPostsMacro = postsProcessados.slice(0, 10);
 
-      // Desconstrução da Engenharia Reversa pelo Gemini
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -117,14 +117,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const prompt = `
         Você é o Diretor de Criação e Inteligência de Mercado do BagTV SaaS.
-        Analise a lista de REELS de MAIOR impacto e tração de engajamento do nicho "${termoLimpo}".
-        Estes vídeos representam a elite de retenção e alcance do mercado.
+        Analise a lista híbrida de publicações (Reels e Carrosséis/Fotos) de MAIOR impacto e engajamento absoluto do nicho "${termoLimpo}".
+        Estes conteúdos representam a elite de tráfego orgânico do mercado.
 
         Amostra dos Campeões de Mercado:
         ${JSON.stringify(topPostsMacro)}
 
-        Desconstrua a engenharia reversa desses vídeos virais para servir de referência na criação de mídias de alta conversão.
-        Para cada um dos 10 vídeos, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
+        Desconstrua a engenharia reversa desses conteúdos para servirem de referência na criação de mídias de alta conversão.
+        Para cada um dos 10 conteúdos, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
         [
           {
             "autor": "username do criador/marca",
@@ -133,12 +133,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             "urlPost": "link oficial da publicação",
             "likesCount": 0,
             "commentsCount": 0,
-            "tipo": "Reels / Vídeo",
+            "tipo": "Reels / Vídeo ou Foto / Carrossel",
             "scoreViral": "👑 Referência Macro de Mercado",
-            "pilarVisual": "Engenharia do gancho visual nos primeiros 3 segundos (enquadramento food porn, contraste, transição ou movimento)",
-            "pilarHeadline": "Quebra de objeção, promessa do texto ou gancho na tela",
-            "pilarAudioFormato": "Estrutura do formato (ASMR, ritmo de edição rápida, locução ou trilha comercial)",
-            "pilarCtaRetencao": "Por que o vídeo gerou salvamentos, comentários e direcionamento de vendas"
+            "pilarVisual": "Engenharia visual (gancho nos primeiros segundos em vídeo ou apelo estético de cardápio/swipe em carrossel)",
+            "pilarHeadline": "Quebra de objeção, promessa do texto ou chamada principal na tela",
+            "pilarAudioFormato": "Estrutura do formato (ritmo de edição, sonoplastia ou apelo visual do carrossel)",
+            "pilarCtaRetencao": "Por que o conteúdo gerou salvamentos, partilhas e direcionamento de vendas"
           }
         ]
         `;
