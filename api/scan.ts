@@ -30,38 +30,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const actorId = "apify~instagram-scraper";
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
-    // MODO 2: PESQUISA DE BENCHMARK AUTÔNOMA (ABA 2)
+    // MODO 2: PESQUISA DE BENCHMARK AUTÔNOMA VIA HASHTAG DINÂMICA (ABA 2 - OPÇÃO A)
     if (body?.action === 'benchmark' && body?.niche) {
-      const nicheQuery = body.niche.trim();
+      const termoLimpo = body.niche.replace("#", "").trim().toLowerCase();
+
+      if (!termoLimpo) {
+        return res.status(200).json({ sucesso: false, erro: "Informe um nicho ou palavra-chave válida." });
+      }
+
+      // Monta dinamicamente a URL da hashtag para o Apify sem hardcode
+      const hashtagUrl = `https://www.instagram.com/explore/tags/${termoLimpo}/`;
 
       const responseApify = await fetch(apifyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          search: nicheQuery,
-          searchType: "hashtag",
-          resultsLimit: 20,
+          directUrls: [hashtagUrl],
+          resultsLimit: 15,
           resultsType: "posts"
         })
       });
 
       const itemsApify = responseApify.ok ? await responseApify.json() : [];
 
-      const postsBrutos = Array.isArray(itemsApify) ? itemsApify.map((item: any, index: number) => ({
-        id: item.id || `bench-${index}`,
-        autor: item.ownerUsername || "Criador do Instagram",
-        legenda: item.caption || "Sem legenda",
-        urlPost: item.url || (item.shortCode ? `https://www.instagram.com/p/${item.shortCode}/` : null),
-        likesCount: item.likesCount || 0,
-        commentsCount: item.commentsCount || 0,
-        tipo: item.type === "Video" ? "Reels / Vídeo" : "Foto Feed",
-        timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
-      })).filter(p => !!p.urlPost) : [];
+      const postsBrutos = Array.isArray(itemsApify) ? itemsApify
+        .map((item: any, index: number) => {
+          const shortCode = item.shortCode || item.code;
+          const urlPost = item.url || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
+          
+          return {
+            id: item.id || `bench-${index}`,
+            autor: item.ownerUsername || "Criador do Instagram",
+            legenda: item.caption || "Sem legenda",
+            urlPost: urlPost,
+            likesCount: item.likesCount || 0,
+            commentsCount: item.commentsCount || 0,
+            tipo: item.type === "Video" ? "Reels / Vídeo" : "Foto Feed",
+            timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
+          };
+        })
+        .filter(p => !!p.urlPost)
+        .sort((a, b) => b.likesCount - a.likesCount)
+        : [];
 
       if (postsBrutos.length === 0) {
-        return res.status(200).json({ sucesso: true, virais: [] });
+        return res.status(200).json({ 
+          sucesso: false, 
+          erro: `Nenhum post público encontrado para a hashtag #${termoLimpo}. Tente outro termo (ex: pizza, hamburguer).` 
+        });
       }
 
+      // Análise dos 4 pilares de Engenharia Reversa pelo Gemini
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -72,25 +91,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const prompt = `
         Você é um estrategista sênior de marketing digital e engenharia reversa de conteúdo viral.
-        Analise os posts do Instagram coletados do nicho "${nicheQuery}".
-        Selecione até 10 conteúdos com maior engajamento/viralidade e desconstrua os porquês do sucesso.
+        Analise a lista de posts reais do Instagram coletados para a busca por hashtag "${termoLimpo}".
+        Selecione até 10 conteúdos de maior engajamento e desconstrua os porquês do sucesso.
 
-        Posts coletados:
+        Posts coletados reais:
         ${JSON.stringify(postsBrutos.slice(0, 15))}
 
-        Para cada post selecionado, retorne EXCLUSIVAMENTE um array JSON com esta estrutura:
+        Para cada post selecionado, retorne EXCLUSIVAMENTE um array JSON estruturado exatamente assim:
         [
           {
-            "autor": "username",
-            "urlPost": "link oficial da publicação fornecido",
+            "autor": "username real do criador",
+            "urlPost": "link oficial da publicação fornecida",
             "likesCount": 0,
             "commentsCount": 0,
-            "tipo": "Reels ou Foto",
-            "scoreViral": "Ex: 4.5x Acima da Média",
-            "pilarVisual": "Análise do gancho visual (primeiros quadros)",
-            "pilarHeadline": "Análise da quebra de objeção e título/texto na tela",
-            "pilarAudioFormato": "Análise do áudio/ritmo de edição",
-            "pilarCtaRetencao": "Análise da retenção (reloop/comentários)"
+            "tipo": "Reels / Vídeo ou Foto Feed",
+            "scoreViral": "Ex: 5.2x Acima da Média",
+            "pilarVisual": "Análise do gancho visual nos primeiros quadros",
+            "pilarHeadline": "Análise do texto na tela ou quebra de objeção",
+            "pilarAudioFormato": "Análise do áudio e ritmo de edição",
+            "pilarCtaRetencao": "Análise da retenção por loop ou chamada para ação"
           }
         ]
         `;
@@ -103,11 +122,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         sucesso: true,
-        virais: postsViraisComAnalise.length > 0 ? postsViraisComAnalise : postsBrutos
+        virais: postsViraisComAnalise.length > 0 ? postsViraisComAnalise : postsBrutos.slice(0, 10)
       });
     }
 
-    // MODO 1: ESCANEAMENTO DE PERFIL (ABA 1)
+    // MODO 1: ESCANEAMENTO DE PERFIL INDIVIDUAL (ABA 1)
     const instagramRaw = body?.instagram || "";
     const instagramHandle = instagramRaw.replace("@", "").trim();
 
