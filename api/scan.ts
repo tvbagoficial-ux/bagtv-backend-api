@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify({
           search: nicheQuery,
           searchType: "hashtag",
-          resultsLimit: 15,
+          resultsLimit: 20,
           resultsType: "posts"
         })
       });
@@ -49,20 +49,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const postsBrutos = Array.isArray(itemsApify) ? itemsApify.map((item: any, index: number) => ({
         id: item.id || `bench-${index}`,
-        autor: item.ownerUsername || "Desconhecido",
+        autor: item.ownerUsername || "Criador do Instagram",
         legenda: item.caption || "Sem legenda",
-        urlFoto: item.displayUrl || item.url || (item.images && item.images[0]),
+        urlPost: item.url || (item.shortCode ? `https://www.instagram.com/p/${item.shortCode}/` : null),
         likesCount: item.likesCount || 0,
         commentsCount: item.commentsCount || 0,
         tipo: item.type === "Video" ? "Reels / Vídeo" : "Foto Feed",
         timestamp: item.timestamp ? new Date(item.timestamp).toLocaleDateString("pt-BR") : "Recente"
-      })).filter(p => !!p.urlFoto) : [];
+      })).filter(p => !!p.urlPost) : [];
 
       if (postsBrutos.length === 0) {
         return res.status(200).json({ sucesso: true, virais: [] });
       }
 
-      // Gemini IA analisa os posts e extrai os 4 pilares do gancho dinamicamente
       let postsViraisComAnalise = [];
       if (apiKey) {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -73,37 +72,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const prompt = `
         Você é um estrategista sênior de marketing digital e engenharia reversa de conteúdo viral.
-        Analise a lista de posts do Instagram abaixo coletados do nicho "${nicheQuery}".
-        Selecione os posts com maior potencial de viralidade (outliers) e desconstrua o motivo do sucesso.
+        Analise os posts do Instagram coletados do nicho "${nicheQuery}".
+        Selecione até 10 conteúdos com maior engajamento/viralidade e desconstrua os porquês do sucesso.
 
         Posts coletados:
-        ${JSON.stringify(postsBrutos.slice(0, 10))}
+        ${JSON.stringify(postsBrutos.slice(0, 15))}
 
-        Para cada post selecionado, retorne um objeto JSON contendo:
-        - "autor": username do criador
-        - "urlFoto": url da imagem/vídeo fornecida
-        - "likesCount": número de likes
-        - "commentsCount": número de comentários
-        - "tipo": formato (Reels / Foto)
-        - "scoreViral": estimativa de impacto (ex: "4.8x Acima da Média")
-        - "pilarVisual": Análise do gancho visual nos primeiros segundos/capa.
-        - "pilarHeadline": Análise do texto/headline exibido.
-        - "pilarAudioFormato": Análise do formato de áudio ou ritmo de edição.
-        - "pilarCtaRetencao": Análise da retenção e chamada para ação (CTA).
-
-        Retorne EXCLUSIVAMENTE um array JSON válido estruturado assim:
+        Para cada post selecionado, retorne EXCLUSIVAMENTE um array JSON com esta estrutura:
         [
           {
-            "autor": "...",
-            "urlFoto": "...",
+            "autor": "username",
+            "urlPost": "link oficial da publicação fornecido",
             "likesCount": 0,
             "commentsCount": 0,
-            "tipo": "...",
-            "scoreViral": "...",
-            "pilarVisual": "...",
-            "pilarHeadline": "...",
-            "pilarAudioFormato": "...",
-            "pilarCtaRetencao": "..."
+            "tipo": "Reels ou Foto",
+            "scoreViral": "Ex: 4.5x Acima da Média",
+            "pilarVisual": "Análise do gancho visual (primeiros quadros)",
+            "pilarHeadline": "Análise da quebra de objeção e título/texto na tela",
+            "pilarAudioFormato": "Análise do áudio/ritmo de edição",
+            "pilarCtaRetencao": "Análise da retenção (reloop/comentários)"
           }
         ]
         `;
